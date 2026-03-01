@@ -1,0 +1,15 @@
+cd ~/UIB-Project/external/UIBDiffusion
+
+python UIBDiffusion.py \
+  --project alan_uib_poc \
+  --mode train+measure \
+  --dataset CIFAR10 \
+  --epoch 2 \
+  --batch 32 \
+  --poison_rate 0.1 \
+  --trigger UAP_NOISE \
+  --target HAT \
+  --ckpt DDPM-CIFAR10-32 \
+  --fclip o \
+  --overwrite \
+  --gpu 0

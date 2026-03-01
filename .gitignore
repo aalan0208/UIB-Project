@@ -1,0 +1,37 @@
+# Bundled third-party libraries (installed via pip, not needed in repo)
+external/UIBDiffusion/diffusers/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datasets / caches
+datasets/
+data/
+**/datasets/
+**/downloads/
+**/*.arrow
+**/*.lock
+
+# Training outputs / checkpoints
+outputs/
+results/
+**/res_*/
+**/ckpt/
+**/epochs/
+**/*.bin
+**/*.pt
+**/*.pth
+**/*.pkl
+**/*.safetensors
+wandb/
+logs/
+nohup.out*.swp
+*.swo
+
+*.swp
+*~
