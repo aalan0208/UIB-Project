@@ -157,7 +157,8 @@ class TrainingConfig:
     
     eval_sample_n: int = 16  # how many images to sample during evaluation
     # measure_sample_n: int = 1024
-    measure_sample_n: int = 10000
+    
+    measure_sample_n: int = 1000
     # measure_sample_n: int = 16
     measure_inpaint_sample_n: int = 1024
     batch_32: int = 128
