@@ -1073,13 +1073,12 @@ def measure(config: TrainingConfig, accelerator: Accelerator, dataset_loader: Da
     clean_path = os.path.join(*folder_path_ls, clean_folder)
     backdoor_path = os.path.join(*folder_path_ls, backdoor_folder)
     
-    # if not os.path.isdir(dataset_img_dir) or resample:
-    #     ds = dataset_loader.get_dataset().shuffle(seed=config.seed)
-    #     os.makedirs(dataset_img_dir, exist_ok=True)
-    #     # dataset_loader.show_sample(img=ds[0][DatasetLoader.IMAGE], is_show=False, file_name=os.path.join(clean_measure_dir, f"0.png"))
-    #     for i, img in enumerate(tqdm(ds[:config.measure_sample_n][DatasetLoader.IMAGE])):
-    #         dataset_loader.show_sample(img=img, is_show=False, file_name=os.path.join(dataset_img_dir, f"{i}.png"))
-    #     re_comp_clean_metric = True
+    if not os.path.isdir(dataset_img_dir) or resample:
+        ds = dataset_loader.get_dataset().shuffle(seed=config.seed)
+        os.makedirs(dataset_img_dir, exist_ok=True)
+        for i, img in enumerate(tqdm(ds[:config.measure_sample_n][DatasetLoader.IMAGE])):
+            dataset_loader.show_sample(img=img, is_show=False, file_name=os.path.join(dataset_img_dir, f"{i}.png"))
+        re_comp_clean_metric = True
     
     # Free any leftover training memory before sampling
     torch.cuda.empty_cache()
