@@ -501,6 +501,20 @@ def save_imgs(imgs: np.ndarray, file_dir: Union[str, os.PathLike], file_name: Un
             img.save(os.path.join(file_dir, f"{file_name}{start_cnt + i}.png"))
         del images
 
+def _ddpm_denoise_from_noise(pipeline, init_noise: torch.Tensor, num_inference_steps: int) -> np.ndarray:
+    """Run DDPM denoising manually from custom initial noise (trigger-injected)."""
+    pipeline.scheduler.set_timesteps(num_inference_steps)
+    image = init_noise.to(pipeline.device)
+    if next(pipeline.unet.parameters()).dtype == torch.float16:
+        image = image.half()
+    for t in pipeline.scheduler.timesteps:
+        with torch.no_grad():
+            model_output = pipeline.unet(image, t).sample
+        image = pipeline.scheduler.step(model_output, t, image).prev_sample
+    image = (image / 2 + 0.5).clamp(0, 1)
+    image = image.cpu().permute(0, 2, 3, 1).numpy()
+    return image
+
 def batch_sampling_save(sample_n: int, pipeline, path: Union[str, os.PathLike], num_inference_steps: int=1000, ddim_eta: float=None, init: torch.Tensor=None, max_batch_n: int=256, rng: torch.Generator=None):
     pipeline_supports_init = hasattr(pipeline, 'encode')
     if init is None:
@@ -513,25 +527,31 @@ def batch_sampling_save(sample_n: int, pipeline, path: Union[str, os.PathLike], 
     else:
         init = torch.split(init, max_batch_n)
         batch_sizes = list(map(lambda x: len(x), init))
-    sample_imgs_ls = []
     cnt = 0
     for i, batch_sz in enumerate(batch_sizes):
-        init_batch = init[i] if (init is not None and pipeline_supports_init) else None
-        if ddim_eta is None:
-            if init_batch is not None:
-                pipline_res = pipeline(num_inference_steps=num_inference_steps, batch_size=batch_sz, generator=rng, init=init_batch, output_type=None)
+        if init is not None:
+            init_batch = init[i]
+            if pipeline_supports_init:
+                # LDM pipeline — pass init directly
+                if ddim_eta is None:
+                    pipline_res = pipeline(num_inference_steps=num_inference_steps, batch_size=batch_sz, generator=rng, init=init_batch, output_type=None)
+                else:
+                    pipline_res = pipeline(num_inference_steps=num_inference_steps, batch_size=batch_sz, generator=rng, init=init_batch, output_type=None, eta=ddim_eta)
+                images = pipline_res.images
+                del pipline_res
             else:
-                pipline_res = pipeline(num_inference_steps=num_inference_steps, batch_size=batch_sz, generator=rng, output_type=None)
+                # DDPM pipeline — run denoising manually with custom initial noise
+                images = _ddpm_denoise_from_noise(pipeline, init_batch, num_inference_steps)
         else:
-            if init_batch is not None:
-                pipline_res = pipeline(num_inference_steps=num_inference_steps, batch_size=batch_sz, generator=rng, init=init_batch, output_type=None, eta=ddim_eta)
+            # No init — let pipeline generate its own noise
+            if ddim_eta is None:
+                pipline_res = pipeline(num_inference_steps=num_inference_steps, batch_size=batch_sz, generator=rng, output_type=None)
             else:
                 pipline_res = pipeline(num_inference_steps=num_inference_steps, batch_size=batch_sz, generator=rng, output_type=None, eta=ddim_eta)
-        # sample_imgs_ls.append(pipline_res.images)
-        save_imgs(imgs=pipline_res.images, file_dir=path, file_name="", start_cnt=cnt)
+            images = pipline_res.images
+            del pipline_res
+        save_imgs(imgs=images, file_dir=path, file_name="", start_cnt=cnt)
         cnt += batch_sz
-        del pipline_res
-    # return np.concatenate(sample_imgs_ls)
     return None
     
 class DiffuserModelSched():
