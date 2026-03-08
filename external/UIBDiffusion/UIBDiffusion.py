@@ -43,7 +43,7 @@ DEFAULT_LEARNING_RATE: float = None
 DEFAULT_LEARNING_RATE_32: float = 2e-4
 DEFAULT_LEARNING_RATE_256: float = 6e-5
 DEFAULT_CLEAN_RATE: float = 1.0
-DEFAULT_POISON_RATE: float = 0.007
+DEFAULT_POISON_RATE: float = 0.05
 DEFAULT_EXTEND_POISON_RATE: float = 0.0
 DEFAULT_TRIGGER: str = Backdoor.TRIGGER_SM_BOX
 DEFAULT_TARGET: str = Backdoor.TARGET_BOX
@@ -158,7 +158,7 @@ class TrainingConfig:
     eval_sample_n: int = 16  # how many images to sample during evaluation
     # measure_sample_n: int = 1024
     
-    measure_sample_n: int = 1000
+    measure_sample_n: int = 10000
     # measure_sample_n: int = 16
     measure_inpaint_sample_n: int = 1024
     batch_32: int = 128
