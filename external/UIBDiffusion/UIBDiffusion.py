@@ -1091,7 +1091,9 @@ def measure(config: TrainingConfig, accelerator: Accelerator, dataset_loader: Da
     if hasattr(pipeline, 'encode'):
         backdoor_noise = noise + pipeline.encode(dataset_loader.trigger.unsqueeze(0)).to(noise.device)
     else:
-        backdoor_noise = noise + dataset_loader.trigger.unsqueeze(0).to(noise.device)
+        trigger = dataset_loader.trigger.unsqueeze(0).to(noise.device)
+        print(f"[DEBUG] trigger shape={trigger.shape}, mean={trigger.mean():.4f}, std={trigger.std():.4f}, min={trigger.min():.4f}, max={trigger.max():.4f}")
+        backdoor_noise = noise + trigger
     
     if config.task != TASK_GENERATE:
         mse_sc, ssim_sc, lpips_sc = measure_inpaints(config=config, pipeline=pipeline, dsl=dataset_loader)

@@ -501,8 +501,16 @@ def save_imgs(imgs: np.ndarray, file_dir: Union[str, os.PathLike], file_name: Un
             img.save(os.path.join(file_dir, f"{file_name}{start_cnt + i}.png"))
         del images
 
+_ddpm_denoise_debug_printed = False
+
 def _ddpm_denoise_from_noise(pipeline, init_noise: torch.Tensor, num_inference_steps: int) -> np.ndarray:
     """Run DDPM denoising manually from custom initial noise (trigger-injected)."""
+    global _ddpm_denoise_debug_printed
+    if not _ddpm_denoise_debug_printed:
+        print(f"[DEBUG] _ddpm_denoise_from_noise called: init_noise shape={init_noise.shape}, "
+              f"mean={init_noise.mean():.4f}, std={init_noise.std():.4f}, "
+              f"min={init_noise.min():.4f}, max={init_noise.max():.4f}")
+        _ddpm_denoise_debug_printed = True
     pipeline.scheduler.set_timesteps(num_inference_steps)
     image = init_noise.to(pipeline.device)
     if next(pipeline.unet.parameters()).dtype == torch.float16:
