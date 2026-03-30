@@ -653,15 +653,28 @@ def sampling(config: TrainingConfig, file_name: Union[int, str], pipeline):
         # The default pipeline output type is `List[PIL.Image]`
         print(f"Pipeline: {type(pipeline)}")
         if config.ddim_eta == None:
-            pipline_res = pipeline(
-                num_inference_steps=config.infer_steps,
-                generator=torch.manual_seed(config.seed),
-                batch_size=config.eval_sample_n,
-                output_type="pt"
-            )
+            if init is None:
+                # Clean sampling — let pipeline generate its own noise
+                pipline_res = pipeline(
+                    num_inference_steps=config.infer_steps,
+                    generator=torch.manual_seed(config.seed),
+                    batch_size=config.eval_sample_n,
+                    output_type="pt"
+                )
+                images = pipline_res.images
+            else:
+                # Backdoor sampling — manually run DDPM loop from trigger-injected noise
+                device = pipeline.device
+                images = init.to(device)
+                pipeline.scheduler.set_timesteps(config.infer_steps)
+                for t in pipeline.scheduler.timesteps:
+                    with torch.no_grad():
+                        noise_pred = pipeline.unet(images, t).sample
+                    images = pipeline.scheduler.step(noise_pred, t, images).prev_sample
+                images = (images / 2 + 0.5).clamp(0, 1)
         else:
             pipline_res = pipeline(num_inference_steps=config.infer_steps, start_from=start_from, eta=config.ddim_eta, batch_size=config.eval_sample_n, generator=torch.manual_seed(config.seed), init=init, save_every_step=True, output_type="pt")
-        images = pipline_res.images  # ideally Tensor [B,C,H,W] in [0,1] if output_type="pt"
+            images = pipline_res.images
 
         # If diffusers ever returns PIL list, convert it back to tensor
         if isinstance(images, list) and len(images) > 0 and isinstance(images[0], Image.Image):
@@ -695,7 +708,7 @@ def sampling(config: TrainingConfig, file_name: Union[int, str], pipeline):
 
         if config.task == TASK_GENERATE:
             # Sample Clean Samples
-            clean_imgs = gen_samples(init=noise, folder="samples", start_from=0)
+            clean_imgs = gen_samples(init=None, folder="samples", start_from=0)
 
             # Sample Backdoor Samples (one set per trigger) and build overview grid
             backdoor_imgs_list = []
@@ -1201,7 +1214,10 @@ def measure(config: TrainingConfig, accelerator: Accelerator, dataset_loader: Da
         if not multi_trigger:
             sc = update_score_file(config=config, score_file=score_file, fid_sc=fid_sc, mse_sc=mse_sc, ssim_sc=ssim_sc)
         else:
-            sc = update_score_file(config=config, score_file=score_file, fid_sc=fid_sc, mse_sc=None, ssim_sc=None)
+            # Compute averaged MSE/SSIM across triggers for the top-level entry
+            avg_mse = float(sum(s["mse"] for s in per_trigger_scores.values()) / len(per_trigger_scores)) if per_trigger_scores else None
+            avg_ssim = float(sum(s["ssim"] for s in per_trigger_scores.values()) / len(per_trigger_scores)) if per_trigger_scores else None
+            sc = update_score_file(config=config, score_file=score_file, fid_sc=fid_sc, mse_sc=avg_mse, ssim_sc=avg_ssim)
             try:
                 with open(os.path.join(config.output_dir, score_file), "r") as f:
                     sc = json.load(f)
