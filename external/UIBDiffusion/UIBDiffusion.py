@@ -722,7 +722,7 @@ def sampling(config: TrainingConfig, file_name: Union[int, str], pipeline):
 
             # Save overview: one row of clean samples, then one row per trigger's backdoor samples
             clip_opt = "" if config.clip else "_noclip"
-            overview_rows = [clean_imgs] + backdoor_imgs_list
+            overview_rows = [t.cpu() for t in ([clean_imgs] + backdoor_imgs_list)]
             overview_grid = torch.cat(overview_rows, dim=0)
             torchvision.utils.save_image(
                 overview_grid,
