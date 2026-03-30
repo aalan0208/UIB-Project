@@ -86,6 +86,8 @@ class DatasetLoader(object):
         self.__set_img_shape(image_size=image_size)
         self.__trigger_type = self.__target_type = None
         self.__trigger = self.__target = self.__poison_rate = self.__ext_poison_rate = None
+        self.__trigger_list = []
+        self.__target_list = []
         self.__clean_rate = 1
         self.__seed = seed
         self.__rand_generator = torch.Generator()
@@ -106,8 +108,31 @@ class DatasetLoader(object):
         self.__target_type = target_type
         self.__trigger = self.__backdoor.get_trigger(type=trigger_type, channel=self.__channel, image_size=self.__image_size, vmin=self.__vmin, vmax=self.__vmax)
         self.__target = self.__backdoor.get_target(type=target_type, trigger=self.__trigger, dx=target_dx, dy=target_dy, vmin=self.__vmin, vmax=self.__vmax)
+        self.__trigger_list = [self.__trigger]
+        self.__target_list = [self.__target]
         return self
-    
+
+    def set_multi_poison(self, trigger_types: List[str], target_types: List[str], target_dx: int=-5, target_dy: int=-3, clean_rate: float=1.0, poison_rate: float=0.2, ext_poison_rate: float=0.0) -> 'DatasetLoader':
+        if self.__root == None:
+            raise ValueError("Attribute 'root' is None")
+        self.__clean_rate = clean_rate
+        self.__ext_poison_rate = ext_poison_rate
+        self.__poison_rate = poison_rate
+        self.__trigger_type = trigger_types[0]
+        self.__target_type = target_types[0]
+        self.__trigger_list = [
+            self.__backdoor.get_trigger(type=t, channel=self.__channel, image_size=self.__image_size, vmin=self.__vmin, vmax=self.__vmax)
+            for t in trigger_types
+        ]
+        self.__target_list = [
+            self.__backdoor.get_target(type=t, trigger=self.__trigger_list[i], dx=target_dx, dy=target_dy, vmin=self.__vmin, vmax=self.__vmax)
+            for i, t in enumerate(target_types)
+        ]
+        self.__trigger = self.__trigger_list[0]
+        self.__target = self.__target_list[0]
+        return self
+
+
     def __load_dataset(self, name: str):
         datasets.config.IN_MEMORY_MAX_SIZE = 50 * 2 ** 30
         split_method = 'train+test'
@@ -543,17 +568,27 @@ class DatasetLoader(object):
 
     # Our method to add image triggers
 
-        def backdoor_transforms(examples) -> DatasetDict: 
+        def backdoor_transforms(examples) -> DatasetDict:
             examples = clean_transforms(examples)
             data_shape = examples[DatasetLoader.PIXEL_VALUES].shape
-            repeat_times = (data_shape[0], *([1] * len(data_shape[1:])))
-            examples[DatasetLoader.PIXEL_VALUES_TRIGGER] = self.__trigger.repeat(*repeat_times)
-            if R_trigger_only:
-                examples[DatasetLoader.PIXEL_VALUES] = self.__trigger.repeat(*repeat_times)
-            else:
-                examples[DatasetLoader.PIXEL_VALUES] = examples[DatasetLoader.IMAGE] + 0.1 * self.__trigger.repeat(*repeat_times)# 0.05
-
-            examples[DatasetLoader.TARGET] = self.__target.repeat(*repeat_times)
+            batch_size = data_shape[0]
+            n_triggers = len(self.__trigger_list)
+            chosen = torch.randint(0, n_triggers, (batch_size,))
+            poisoned_list = []
+            trigger_list_batch = []
+            target_list_batch = []
+            for i in range(batch_size):
+                trig = self.__trigger_list[chosen[i]]
+                tgt = self.__target_list[chosen[i]]
+                trigger_list_batch.append(trig)
+                target_list_batch.append(tgt)
+                if R_trigger_only:
+                    poisoned_list.append(trig)
+                else:
+                    poisoned_list.append(examples[DatasetLoader.IMAGE][i] + 0.1 * trig)
+            examples[DatasetLoader.PIXEL_VALUES_TRIGGER] = torch.stack(trigger_list_batch)
+            examples[DatasetLoader.PIXEL_VALUES] = torch.stack(poisoned_list)
+            examples[DatasetLoader.TARGET] = torch.stack(target_list_batch)
             return examples
 
         if clean:
@@ -664,7 +699,15 @@ class DatasetLoader(object):
     @property
     def trigger(self):
         return self.__trigger
-    
+
+    @property
+    def trigger_list(self):
+        return self.__trigger_list if self.__trigger_list else [self.__trigger]
+
+    @property
+    def target_list(self):
+        return self.__target_list if self.__target_list else [self.__target]
+
     @property
     def target(self):
         return self.__target
@@ -741,6 +784,7 @@ class Backdoor():
     TRIGGER_XXSM_STOP_SIGN = "STOP_SIGN_8"
     TRIGGER_XXXSM_STOP_SIGN = "STOP_SIGN_4"
     TRIGGER_UAP_NOISE = "UAP_NOISE"
+    TRIGGER_UAP_NOISE2 = "UAP_NOISE2"
     TRIGGER_UAP_HQ = "UAP_HQ"
     TRIGGER_UAP_RESNET = "UAP_RESNET"
     TRIGGER_UAP_RESNET50 = "UAP_RESNET50"
@@ -937,6 +981,15 @@ class Backdoor():
         elif type == Backdoor.TRIGGER_UAP_NOISE:
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_NOISE, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
+        elif type == Backdoor.TRIGGER_UAP_NOISE2:
+            # Second imperceptible noise pattern — same magnitude as UAP_NOISE but different pattern
+            # Generated from a fixed seed so it's always identical across runs
+            gen = torch.Generator()
+            gen.manual_seed(1234)
+            uap1 = self.__get_img_trigger(path=Backdoor.UAP_NOISE, image_size=image_size, channel=channel, trigger_sz=image_size, vmin=vmin, vmax=vmax)
+            noise = torch.randn((channel, image_size, image_size), generator=gen) * uap1.std()
+            # Clip to same range as UAP_NOISE so it stays imperceptible
+            return noise.clamp(vmin, vmax)
         elif type == Backdoor.TRIGGER_UAP_HQ:
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_HQ, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)

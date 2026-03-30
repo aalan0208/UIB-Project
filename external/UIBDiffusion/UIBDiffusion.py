@@ -187,7 +187,9 @@ def naming_fn(config: TrainingConfig):
     add_on: str = ""
     # add_on += "_clip" if config.clip else ""
     add_on += f"_{config.postfix}" if config.postfix else ""
-    return f'res_{config.ckpt}_{config.dataset}_ep{config.epoch}_{config.solver_type}_c{config.clean_rate}_p{config.poison_rate}_epr{config.ext_poison_rate}_{config.trigger}-{config.target}_psi{config.psi}_lr{config.learning_rate}_vp{config.vp_scale}_ve{config.ve_scale}{add_on}'
+    trigger_str = '+'.join(config.trigger) if isinstance(config.trigger, list) else config.trigger
+    target_str = '+'.join(config.target) if isinstance(config.target, list) else config.target
+    return f'res_{config.ckpt}_{config.dataset}_ep{config.epoch}_{config.solver_type}_c{config.clean_rate}_p{config.poison_rate}_epr{config.ext_poison_rate}_{trigger_str}-{target_str}_psi{config.psi}_lr{config.learning_rate}_vp{config.vp_scale}_ve{config.ve_scale}{add_on}'
 
 def read_json(args: argparse.Namespace, file: str):
     with open(os.path.join(args.ckpt, file), "r") as f:
@@ -259,6 +261,20 @@ def setup():
     else:
         setattr(config, "clip", None)
         
+    # Normalize trigger/target to lists (support comma-separated multi-trigger)
+    if isinstance(config.trigger, str) and ',' in config.trigger:
+        config.trigger = config.trigger.split(',')
+    else:
+        config.trigger = [config.trigger]
+
+    if isinstance(config.target, str) and ',' in config.target:
+        config.target = config.target.split(',')
+    else:
+        config.target = [config.target]
+
+    assert len(config.trigger) == len(config.target), \
+        f"Each trigger needs a paired target, got {len(config.trigger)} trigger(s) and {len(config.target)} target(s)"
+
     # Mixed Precision Options
     if config.sde_type == "SDE-VP" or config.sde_type == "SDE-LDM":
         config.mixed_precision = 'fp16'
@@ -422,10 +438,44 @@ def get_data_loader(config: TrainingConfig):
         raise NotImplementedError(f"sde_type: {config.sde_type} isn't implemented")
     
     if hasattr(config, 'R_trigger_only'):
-        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_poison(trigger_type=config.trigger, target_type=config.target, clean_rate=config.clean_rate, poison_rate=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode, R_trigger_only=config.R_trigger_only)
+        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode, R_trigger_only=config.R_trigger_only)
     else:
-        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_poison(trigger_type=config.trigger, target_type=config.target, clean_rate=config.clean_rate, poison_rate=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode)
+        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode)
     print(f"datasetloader len: {len(dsl)}")
+
+    # Save dataset preview: clean vs poisoned side-by-side, triggers, and targets
+    n_preview = 8
+    preview_dl = dsl.get_dataloader(batch_size=n_preview, shuffle=False)
+    preview_batch = next(iter(preview_dl))
+    # Use IMAGE key — always the original untouched image regardless of clean/poisoned split
+    raw_imgs = preview_batch[DatasetLoader.IMAGE]
+    preview_dir = os.path.join(config.result, "dataset_preview")
+    os.makedirs(preview_dir, exist_ok=True)
+
+    def _norm(t):
+        # Normalize from [vmin, vmax] to [0, 1] for saving
+        return ((t.clamp(vmin, vmax) - vmin) / (vmax - vmin)).clamp(0, 1)
+
+    # Save clean images row
+    torchvision.utils.save_image(_norm(raw_imgs), os.path.join(preview_dir, "clean.png"), nrow=n_preview)
+
+    for i, (trig, tgt) in enumerate(zip(dsl.trigger_list, dsl.target_list)):
+        # Manually apply trigger to the same images so pairs always match
+        poisoned_imgs = raw_imgs + 0.1 * trig
+
+        # Side-by-side grid: columns alternate clean | poisoned for each image
+        # Result: [clean0, poisoned0, clean1, poisoned1, ...]
+        paired = torch.stack([x for pair in zip(raw_imgs, poisoned_imgs) for x in pair])
+        torchvision.utils.save_image(_norm(paired), os.path.join(preview_dir, f"clean_vs_poisoned_trigger{i}.png"), nrow=2)
+
+        # Trigger pattern alone
+        torchvision.utils.save_image(_norm(trig.unsqueeze(0)), os.path.join(preview_dir, f"trigger{i}.png"))
+
+        # Target image
+        torchvision.utils.save_image(_norm(tgt.unsqueeze(0)), os.path.join(preview_dir, f"target{i}.png"))
+
+    print(f"Dataset preview saved to {preview_dir}")
+
     return dsl
 
 # Sets up the experiment tracker on the main process (used for logging to wandb).
@@ -598,7 +648,7 @@ def sampling(config: TrainingConfig, file_name: Union[int, str], pipeline):
     def gen_samples(init: torch.Tensor, folder: Union[os.PathLike, str], start_from: int=0):
         test_dir = os.path.join(config.output_dir, folder)
         os.makedirs(test_dir, exist_ok=True)
-        
+
         # Sample some images from random noise (this is the backward diffusion process).
         # The default pipeline output type is `List[PIL.Image]`
         print(f"Pipeline: {type(pipeline)}")
@@ -634,25 +684,38 @@ def sampling(config: TrainingConfig, file_name: Union[int, str], pipeline):
             os.path.join(test_dir, f"{file_name}{clip_opt}.png"),
             nrow=4,
         )
-    
+        return images.clamp(0, 1)
+
     with torch.no_grad():
         print(f"Sampling Init Noise -Sample_n: {config.eval_sample_n}, Channel: {pipeline.unet.in_channels}, Sample_size: {pipeline.unet.sample_size}")
         noise = torch.randn(
                     (config.eval_sample_n, pipeline.unet.in_channels, pipeline.unet.sample_size, pipeline.unet.sample_size),
                     generator=torch.manual_seed(config.seed),
                 )
-        
+
         if config.task == TASK_GENERATE:
             # Sample Clean Samples
-            gen_samples(init=noise, folder="samples", start_from=0)
-            # Sample Backdoor Samples
-            # init = noise + torch.where(dsl.trigger.unsqueeze(0) == -1.0, 0, 1)
-            if hasattr(pipeline, 'encode'):
-                init = noise.to(pipeline.device) + pipeline.encode(dsl.trigger.unsqueeze(0).to(pipeline.device))
-            else:
-                init = noise.to(pipeline.device) + dsl.trigger.unsqueeze(0).to(pipeline.device)
-            # print(f"Trigger - (max: {torch.max(dsl.trigger)}, min: {torch.min(dsl.trigger)}) | Noise - (max: {torch.max(noise)}, min: {torch.min(noise)}) | Init - (max: {torch.max(init)}, min: {torch.min(init)})")
-            gen_samples(init=init, folder="backdoor_samples", start_from=0)
+            clean_imgs = gen_samples(init=noise, folder="samples", start_from=0)
+
+            # Sample Backdoor Samples (one set per trigger) and build overview grid
+            backdoor_imgs_list = []
+            for trig_idx, trig in enumerate(dsl.trigger_list):
+                if hasattr(pipeline, 'encode'):
+                    init = noise.to(pipeline.device) + pipeline.encode(trig.unsqueeze(0).to(pipeline.device))
+                else:
+                    init = noise.to(pipeline.device) + trig.unsqueeze(0).to(pipeline.device)
+                folder = "backdoor_samples" if len(dsl.trigger_list) == 1 else f"backdoor_samples_trigger{trig_idx}"
+                backdoor_imgs_list.append(gen_samples(init=init, folder=folder, start_from=0))
+
+            # Save overview: one row of clean samples, then one row per trigger's backdoor samples
+            clip_opt = "" if config.clip else "_noclip"
+            overview_rows = [clean_imgs] + backdoor_imgs_list
+            overview_grid = torch.cat(overview_rows, dim=0)
+            torchvision.utils.save_image(
+                overview_grid,
+                os.path.join(config.output_dir, f"overview_{file_name}{clip_opt}.png"),
+                nrow=config.eval_sample_n,
+            )
         else:
             # Special Sampling
             start_from_sp = config.infer_start
@@ -1088,51 +1151,67 @@ def measure(config: TrainingConfig, accelerator: Accelerator, dataset_loader: Da
                 (config.measure_sample_n, pipeline.unet.in_channels, pipeline.unet.sample_size, pipeline.unet.sample_size),
                 generator=torch.manual_seed(config.seed),
             )
-    if hasattr(pipeline, 'encode'):
-        backdoor_noise = noise + pipeline.encode(dataset_loader.trigger.unsqueeze(0)).to(noise.device)
-    else:
-        trigger = dataset_loader.trigger.unsqueeze(0).to(noise.device)
-        print(f"[DEBUG] trigger shape={trigger.shape}, mean={trigger.mean():.4f}, std={trigger.std():.4f}, min={trigger.min():.4f}, max={trigger.max():.4f}")
-        backdoor_noise = noise + trigger
-    
     if config.task != TASK_GENERATE:
         mse_sc, ssim_sc, lpips_sc = measure_inpaints(config=config, pipeline=pipeline, dsl=dataset_loader)
         print(f"{config.task} - LPIPS: {lpips_sc}, MSE: {mse_sc}, SSIM: {ssim_sc}")
         sc = update_score_file(config=config, score_file=score_file, lpips_sc=lpips_sc, mse_sc=mse_sc, ssim_sc=ssim_sc)
     else:
-        # Sampling
+        # Sampling clean images (shared across all triggers)
         if not os.path.isdir(clean_path) or match_count(dir=clean_path) < config.measure_sample_n or resample:
             batch_sampling_save(sample_n=config.measure_sample_n, num_inference_steps=config.infer_steps, ddim_eta=config.ddim_eta, pipeline=pipeline, path=clean_path, init=noise, max_batch_n=config.eval_max_batch, rng=rng)
             re_comp_clean_metric = True
 
-        if not os.path.isdir(backdoor_path) or match_count(dir=backdoor_path) < config.measure_sample_n or resample:
-            batch_sampling_save(sample_n=config.measure_sample_n, num_inference_steps=config.infer_steps, ddim_eta=config.ddim_eta, pipeline=pipeline, path=backdoor_path, init=backdoor_noise,  max_batch_n=config.eval_max_batch, rng=rng)
-            re_comp_backdoor_metric = True
-        
-        # Compute Score
         if re_comp_clean_metric or recomp:
             fid_sc = float(fid(path=[dataset_img_dir, clean_path], device=config.device_ids[0], num_workers=4, batch_size=config.eval_max_batch))
-        
-        if re_comp_backdoor_metric or recomp:
-            device = torch.device(config.device_ids[0])
-            # gen_backdoor_target = torch.from_numpy(backdoor_sample_imgs)
-            # print(f"backdoor_sample_imgs shape: {backdoor_sample_imgs.shape}")
-            gen_backdoor_target = ImagePathDataset(path=backdoor_path)[:].to(device)
-            
-            reps = ([len(gen_backdoor_target)] + ([1] * (len(dataset_loader.target.shape))))
-            if config.sde_type == DiffuserModelSched.SDE_VE:
-                backdoor_target = torch.squeeze((dataset_loader.target.repeat(*reps)).clamp(0, 1)).to(device)
+
+        # Per-trigger backdoor sampling and scoring
+        multi_trigger = len(dataset_loader.trigger_list) > 1
+        per_trigger_scores = {}
+        for trig_idx, (trig, tgt) in enumerate(zip(dataset_loader.trigger_list, dataset_loader.target_list)):
+            trig_suffix = f"_trigger{trig_idx}" if multi_trigger else ""
+            cur_backdoor_path = backdoor_path + trig_suffix
+
+            if hasattr(pipeline, 'encode'):
+                backdoor_noise = noise + pipeline.encode(trig.unsqueeze(0)).to(noise.device)
             else:
-                backdoor_target = torch.squeeze((dataset_loader.target.repeat(*reps) / 2 + 0.5).clamp(0, 1)).to(device)
-            # backdoor_target = torch.squeeze((dataset_loader.target.repeat(*reps) / 2 + 0.5).clamp(0, 1)).to(device)
-            
-            print(f"gen_backdoor_target: {gen_backdoor_target.shape}, vmax: {torch.max(gen_backdoor_target)}, vmin: {torch.min(backdoor_target)} | backdoor_target: {backdoor_target.shape}, vmax: {torch.max(backdoor_target)}, vmin: {torch.min(backdoor_target)}")
-            # mse_sc = float(nn.MSELoss(reduction='mean')(gen_backdoor_target, backdoor_target))
-            # ssim_sc = float(StructuralSimilarityIndexMeasure(data_range=1.0).to(device)(gen_backdoor_target, backdoor_target))
-            mse_sc = Metric.mse_batch(a=gen_backdoor_target, b=backdoor_target, max_batch_n=config.eval_max_batch)
-            ssim_sc = Metric.ssim_batch(a=gen_backdoor_target, b=backdoor_target, max_batch_n=config.eval_max_batch, device=device)
-        print(f"[{config.sample_ep}] FID: {fid_sc}, MSE: {mse_sc}, SSIM: {ssim_sc}")
-        sc = update_score_file(config=config, score_file=score_file, fid_sc=fid_sc, mse_sc=mse_sc, ssim_sc=ssim_sc)
+                trigger = trig.unsqueeze(0).to(noise.device)
+                print(f"[DEBUG] trigger{trig_idx} shape={trigger.shape}, mean={trigger.mean():.4f}, std={trigger.std():.4f}, min={trigger.min():.4f}, max={trigger.max():.4f}")
+                backdoor_noise = noise + trigger
+
+            cur_re_comp_backdoor = re_comp_backdoor_metric
+            if not os.path.isdir(cur_backdoor_path) or match_count(dir=cur_backdoor_path) < config.measure_sample_n or resample:
+                batch_sampling_save(sample_n=config.measure_sample_n, num_inference_steps=config.infer_steps, ddim_eta=config.ddim_eta, pipeline=pipeline, path=cur_backdoor_path, init=backdoor_noise, max_batch_n=config.eval_max_batch, rng=rng)
+                cur_re_comp_backdoor = True
+
+            if cur_re_comp_backdoor or recomp:
+                device = torch.device(config.device_ids[0])
+                gen_backdoor_target = ImagePathDataset(path=cur_backdoor_path)[:].to(device)
+                reps = ([len(gen_backdoor_target)] + ([1] * (len(tgt.shape))))
+                if config.sde_type == DiffuserModelSched.SDE_VE:
+                    backdoor_target = torch.squeeze((tgt.repeat(*reps)).clamp(0, 1)).to(device)
+                else:
+                    backdoor_target = torch.squeeze((tgt.repeat(*reps) / 2 + 0.5).clamp(0, 1)).to(device)
+                print(f"gen_backdoor_target: {gen_backdoor_target.shape}, vmax: {torch.max(gen_backdoor_target)}, vmin: {torch.min(backdoor_target)} | backdoor_target: {backdoor_target.shape}, vmax: {torch.max(backdoor_target)}, vmin: {torch.min(backdoor_target)}")
+                mse_sc = Metric.mse_batch(a=gen_backdoor_target, b=backdoor_target, max_batch_n=config.eval_max_batch)
+                ssim_sc = Metric.ssim_batch(a=gen_backdoor_target, b=backdoor_target, max_batch_n=config.eval_max_batch, device=device)
+                print(f"[{config.sample_ep}] trigger{trig_idx} - FID: {fid_sc}, MSE: {mse_sc}, SSIM: {ssim_sc}")
+                per_trigger_scores[trig_idx] = {"mse": mse_sc, "ssim": ssim_sc}
+
+        # Write scores: for single trigger use existing format; for multi-trigger write per-trigger keys
+        if not multi_trigger:
+            sc = update_score_file(config=config, score_file=score_file, fid_sc=fid_sc, mse_sc=mse_sc, ssim_sc=ssim_sc)
+        else:
+            sc = update_score_file(config=config, score_file=score_file, fid_sc=fid_sc, mse_sc=None, ssim_sc=None)
+            try:
+                with open(os.path.join(config.output_dir, score_file), "r") as f:
+                    sc = json.load(f)
+            except Exception:
+                sc = {}
+            for trig_idx, scores in per_trigger_scores.items():
+                sc[f"trigger{trig_idx}_MSE"] = scores["mse"]
+                sc[f"trigger{trig_idx}_SSIM"] = scores["ssim"]
+            with open(os.path.join(config.output_dir, score_file), "w") as f:
+                json.dump(sc, f, indent=2, sort_keys=True)
         
     # accelerator.log(sc)
     log_score(config=config, accelerator=accelerator, scores=sc, step=step)
