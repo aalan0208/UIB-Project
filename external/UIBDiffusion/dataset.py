@@ -743,6 +743,7 @@ class Backdoor():
     CAT_IMG = "static/cat_wo_bg.png"
     GLASSES_IMG = "static/glasses.png"
     UAP_NOISE = "static/uap.png"
+    UAP_NOISE2_PATH = "static/uap2.png"
 #     UAP_HQ = "static/uap_celebhq.png"
 #     UAP_HQ = "static/uap_celebhq.png"
     UAP_HQ = "static/GUAP_imagenet.png"
@@ -982,14 +983,8 @@ class Backdoor():
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_NOISE, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
         elif type == Backdoor.TRIGGER_UAP_NOISE2:
-            # Second imperceptible noise pattern — same magnitude as UAP_NOISE but different pattern
-            # Generated from a fixed seed so it's always identical across runs
-            gen = torch.Generator()
-            gen.manual_seed(1234)
-            uap1 = self.__get_img_trigger(path=Backdoor.UAP_NOISE, image_size=image_size, channel=channel, trigger_sz=image_size, vmin=vmin, vmax=vmax)
-            noise = torch.randn((channel, image_size, image_size), generator=gen) * uap1.std()
-            # Clip to same range as UAP_NOISE so it stays imperceptible
-            return noise.clamp(vmin, vmax)
+            trigger_sz = int(image_size * 1.0)
+            return self.__get_img_trigger(path=Backdoor.UAP_NOISE2_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
         elif type == Backdoor.TRIGGER_UAP_HQ:
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_HQ, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
