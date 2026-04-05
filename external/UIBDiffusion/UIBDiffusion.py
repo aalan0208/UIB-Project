@@ -185,13 +185,16 @@ class TrainingConfig:
 
 def naming_fn(config: TrainingConfig):
     add_on: str = ""
-    # add_on += "_clip" if config.clip else ""
     add_on += f"_{config.postfix}" if config.postfix else ""
-    trigger_str = '+'.join(config.trigger) if isinstance(config.trigger, list) else config.trigger
-    target_str = '+'.join(config.target) if isinstance(config.target, list) else config.target
-    pr = config.poison_rate
-    pr_str = '+'.join(str(r) for r in pr) if isinstance(pr, list) else str(pr)
-    return f'res_{config.ckpt}_{config.dataset}_ep{config.epoch}_{config.solver_type}_c{config.clean_rate}_p{pr_str}_epr{config.ext_poison_rate}_{trigger_str}-{target_str}_psi{config.psi}_lr{config.learning_rate}_vp{config.vp_scale}_ve{config.ve_scale}{add_on}'
+    triggers = config.trigger if isinstance(config.trigger, list) else [config.trigger]
+    targets = config.target if isinstance(config.target, list) else [config.target]
+    pr = config.poison_rate if isinstance(config.poison_rate, list) else [config.poison_rate]
+    # Shorten trigger/target names to avoid exceeding wandb's 128-char run name limit
+    tr_short = '+'.join(t.replace('_NOISE', 'N').replace('UAP', 'U') for t in triggers)
+    ta_short = '+'.join(t[:3] for t in targets)
+    pr_str = '+'.join(str(r) for r in pr)
+    name = f'res_{config.ckpt}_{config.dataset}_ep{config.epoch}_{config.solver_type}_p{pr_str}_{tr_short}-{ta_short}_lr{config.learning_rate}{add_on}'
+    return name[:128]
 
 def read_json(args: argparse.Namespace, file: str):
     with open(os.path.join(args.ckpt, file), "r") as f:
