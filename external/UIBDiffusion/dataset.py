@@ -753,6 +753,7 @@ class Backdoor():
     GLASSES_IMG = "static/glasses.png"
     UAP_NOISE = "static/uap.png"
     UAP_NOISE2_PATH = "static/uap2.png"
+    UAP_NOISE3_PATH = "static/uap3.png"
 #     UAP_HQ = "static/uap_celebhq.png"
 #     UAP_HQ = "static/uap_celebhq.png"
     UAP_HQ = "static/GUAP_imagenet.png"
@@ -795,6 +796,7 @@ class Backdoor():
     TRIGGER_XXXSM_STOP_SIGN = "STOP_SIGN_4"
     TRIGGER_UAP_NOISE = "UAP_NOISE"
     TRIGGER_UAP_NOISE2 = "UAP_NOISE2"
+    TRIGGER_UAP_NOISE3 = "UAP_NOISE3"
     TRIGGER_UAP_HQ = "UAP_HQ"
     TRIGGER_UAP_RESNET = "UAP_RESNET"
     TRIGGER_UAP_RESNET50 = "UAP_RESNET50"
@@ -994,6 +996,9 @@ class Backdoor():
         elif type == Backdoor.TRIGGER_UAP_NOISE2:
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_NOISE2_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
+        elif type == Backdoor.TRIGGER_UAP_NOISE3:
+            trigger_sz = int(image_size * 1.0)
+            return self.__get_img_trigger(path=Backdoor.UAP_NOISE3_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
         elif type == Backdoor.TRIGGER_UAP_HQ:
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_HQ, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
