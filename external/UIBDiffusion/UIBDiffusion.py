@@ -89,7 +89,7 @@ def parse_args():
     parser.add_argument('--epoch', '-e', type=int, help=f"Epoch num, default for train: {DEFAULT_EPOCH}")
     parser.add_argument('--learning_rate', '-lr', type=float, help=f"Learning rate, default for 32 * 32 image: {DEFAULT_LEARNING_RATE_32}, default for larger images: {DEFAULT_LEARNING_RATE_256}")
     parser.add_argument('--clean_rate', '-cr', type=float, help=f"Clean rate, default for train: {DEFAULT_CLEAN_RATE}")
-    parser.add_argument('--poison_rate', '-pr', type=float, help=f"Poison rate, default for train: {DEFAULT_POISON_RATE}")
+    parser.add_argument('--poison_rate', '-pr', type=str, help=f"Poison rate (comma-separated per trigger, e.g. 0.15,0.05), default for train: {DEFAULT_POISON_RATE}")
     parser.add_argument('--ext_poison_rate', '-epr', type=float, help=f"Poison rate for extend backdoor dataset, default for train: {DEFAULT_EXTEND_POISON_RATE}")
     parser.add_argument('--trigger', '-tr', type=str, help=f"Trigger pattern, default for train: {DEFAULT_TRIGGER}")
     parser.add_argument('--target', '-ta', type=str, help=f"Target pattern, default for train: {DEFAULT_TARGET}")
@@ -189,7 +189,9 @@ def naming_fn(config: TrainingConfig):
     add_on += f"_{config.postfix}" if config.postfix else ""
     trigger_str = '+'.join(config.trigger) if isinstance(config.trigger, list) else config.trigger
     target_str = '+'.join(config.target) if isinstance(config.target, list) else config.target
-    return f'res_{config.ckpt}_{config.dataset}_ep{config.epoch}_{config.solver_type}_c{config.clean_rate}_p{config.poison_rate}_epr{config.ext_poison_rate}_{trigger_str}-{target_str}_psi{config.psi}_lr{config.learning_rate}_vp{config.vp_scale}_ve{config.ve_scale}{add_on}'
+    pr = config.poison_rate
+    pr_str = '+'.join(str(r) for r in pr) if isinstance(pr, list) else str(pr)
+    return f'res_{config.ckpt}_{config.dataset}_ep{config.epoch}_{config.solver_type}_c{config.clean_rate}_p{pr_str}_epr{config.ext_poison_rate}_{trigger_str}-{target_str}_psi{config.psi}_lr{config.learning_rate}_vp{config.vp_scale}_ve{config.ve_scale}{add_on}'
 
 def read_json(args: argparse.Namespace, file: str):
     with open(os.path.join(args.ckpt, file), "r") as f:
@@ -274,6 +276,16 @@ def setup():
 
     assert len(config.trigger) == len(config.target), \
         f"Each trigger needs a paired target, got {len(config.trigger)} trigger(s) and {len(config.target)} target(s)"
+
+    # Normalize poison_rate to a per-trigger list
+    pr = config.poison_rate
+    if isinstance(pr, str) and ',' in pr:
+        config.poison_rate = [float(x) for x in pr.split(',')]
+    else:
+        rate = float(pr) if isinstance(pr, str) else pr
+        config.poison_rate = [rate] * len(config.trigger)
+    assert len(config.poison_rate) == len(config.trigger), \
+        f"poison_rate must have 1 value or one per trigger, got {len(config.poison_rate)} rate(s) and {len(config.trigger)} trigger(s)"
 
     # Mixed Precision Options
     if config.sde_type == "SDE-VP" or config.sde_type == "SDE-LDM":
@@ -437,10 +449,11 @@ def get_data_loader(config: TrainingConfig):
     else:
         raise NotImplementedError(f"sde_type: {config.sde_type} isn't implemented")
     
+    total_poison_rate = sum(config.poison_rate) if isinstance(config.poison_rate, list) else config.poison_rate
     if hasattr(config, 'R_trigger_only'):
-        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode, R_trigger_only=config.R_trigger_only)
+        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=total_poison_rate, poison_rate_list=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode, R_trigger_only=config.R_trigger_only)
     else:
-        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode)
+        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=total_poison_rate, poison_rate_list=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode)
     print(f"datasetloader len: {len(dsl)}")
 
     # Save dataset preview: clean vs poisoned side-by-side, triggers, and targets

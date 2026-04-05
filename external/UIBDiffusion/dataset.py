@@ -88,6 +88,7 @@ class DatasetLoader(object):
         self.__trigger = self.__target = self.__poison_rate = self.__ext_poison_rate = None
         self.__trigger_list = []
         self.__target_list = []
+        self.__trigger_weights = []
         self.__clean_rate = 1
         self.__seed = seed
         self.__rand_generator = torch.Generator()
@@ -112,12 +113,19 @@ class DatasetLoader(object):
         self.__target_list = [self.__target]
         return self
 
-    def set_multi_poison(self, trigger_types: List[str], target_types: List[str], target_dx: int=-5, target_dy: int=-3, clean_rate: float=1.0, poison_rate: float=0.2, ext_poison_rate: float=0.0) -> 'DatasetLoader':
+    def set_multi_poison(self, trigger_types: List[str], target_types: List[str], target_dx: int=-5, target_dy: int=-3, clean_rate: float=1.0, poison_rate: float=0.2, poison_rate_list: List[float]=None, ext_poison_rate: float=0.0) -> 'DatasetLoader':
         if self.__root == None:
             raise ValueError("Attribute 'root' is None")
         self.__clean_rate = clean_rate
         self.__ext_poison_rate = ext_poison_rate
         self.__poison_rate = poison_rate
+        # Per-trigger weights derived from individual poison rates
+        if poison_rate_list is not None and len(poison_rate_list) > 1:
+            total = sum(poison_rate_list)
+            self.__trigger_weights = [r / total for r in poison_rate_list]
+        else:
+            n = len(trigger_types)
+            self.__trigger_weights = [1.0 / n] * n
         self.__trigger_type = trigger_types[0]
         self.__target_type = target_types[0]
         self.__trigger_list = [
@@ -573,7 +581,8 @@ class DatasetLoader(object):
             data_shape = examples[DatasetLoader.PIXEL_VALUES].shape
             batch_size = data_shape[0]
             n_triggers = len(self.__trigger_list)
-            chosen = torch.randint(0, n_triggers, (batch_size,))
+            weights = torch.tensor(self.__trigger_weights) if self.__trigger_weights else torch.ones(n_triggers)
+            chosen = torch.multinomial(weights.expand(batch_size, -1), num_samples=1).squeeze(1)
             poisoned_list = []
             trigger_list_batch = []
             target_list_batch = []
