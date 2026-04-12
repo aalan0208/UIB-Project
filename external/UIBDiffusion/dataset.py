@@ -20,7 +20,7 @@ from typing import Callable, List, Tuple, Union
 from functools import lru_cache
 import warnings
 
-from datasets import load_dataset, concatenate_datasets
+from datasets import load_dataset, load_from_disk, concatenate_datasets
 import datasets
 from datasets.dataset_dict import DatasetDict
 from matplotlib import pyplot as plt
