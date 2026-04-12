@@ -753,7 +753,12 @@ class Backdoor():
     GLASSES_IMG = "static/glasses.png"
     UAP_NOISE = "static/uap.png"
     UAP_NOISE2_PATH = "static/uap2.png"
+    UAP_CELEBA_PATH = "static/uap_celeba.png"
+    UAP_CELEBA2_PATH = "static/uap_celeba2.png"
     UAP_NOISE3_PATH = "static/uap3.png"
+    UAP_NOISE4_PATH = "static/uap4.png"
+    UAP_NOISE5_PATH = "static/uap5.png"
+    UAP_NOISE6_PATH = "static/uap6.png"
 #     UAP_HQ = "static/uap_celebhq.png"
 #     UAP_HQ = "static/uap_celebhq.png"
     UAP_HQ = "static/GUAP_imagenet.png"
@@ -796,7 +801,12 @@ class Backdoor():
     TRIGGER_XXXSM_STOP_SIGN = "STOP_SIGN_4"
     TRIGGER_UAP_NOISE = "UAP_NOISE"
     TRIGGER_UAP_NOISE2 = "UAP_NOISE2"
+    TRIGGER_UAP_CELEBA = "UAP_CELEBA"
+    TRIGGER_UAP_CELEBA2 = "UAP_CELEBA2"
     TRIGGER_UAP_NOISE3 = "UAP_NOISE3"
+    TRIGGER_UAP_NOISE4 = "UAP_NOISE4"
+    TRIGGER_UAP_NOISE5 = "UAP_NOISE5"
+    TRIGGER_UAP_NOISE6 = "UAP_NOISE6"
     TRIGGER_UAP_HQ = "UAP_HQ"
     TRIGGER_UAP_RESNET = "UAP_RESNET"
     TRIGGER_UAP_RESNET50 = "UAP_RESNET50"
@@ -999,6 +1009,21 @@ class Backdoor():
         elif type == Backdoor.TRIGGER_UAP_NOISE3:
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_NOISE3_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
+        elif type == Backdoor.TRIGGER_UAP_NOISE4:
+            trigger_sz = int(image_size * 1.0)
+            return self.__get_img_trigger(path=Backdoor.UAP_NOISE4_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
+        elif type == Backdoor.TRIGGER_UAP_NOISE5:
+            trigger_sz = int(image_size * 1.0)
+            return self.__get_img_trigger(path=Backdoor.UAP_NOISE5_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
+        elif type == Backdoor.TRIGGER_UAP_NOISE6:
+            trigger_sz = int(image_size * 1.0)
+            return self.__get_img_trigger(path=Backdoor.UAP_NOISE6_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
+        elif type == Backdoor.TRIGGER_UAP_CELEBA:
+            trigger_sz = int(image_size * 1.0)
+            return self.__get_img_trigger(path=Backdoor.UAP_CELEBA_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
+        elif type == Backdoor.TRIGGER_UAP_CELEBA2:
+            trigger_sz = int(image_size * 1.0)
+            return self.__get_img_trigger(path=Backdoor.UAP_CELEBA2_PATH, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
         elif type == Backdoor.TRIGGER_UAP_HQ:
             trigger_sz = int(image_size * 1.0)
             return self.__get_img_trigger(path=Backdoor.UAP_HQ, image_size=image_size, channel=channel, trigger_sz=trigger_sz, vmin=vmin, vmax=vmax)
