@@ -153,8 +153,7 @@ class DatasetLoader(object):
         elif name == DatasetLoader.CELEBA:
             return load_dataset("student/celebA", split='train')
         elif name == DatasetLoader.CELEBA_HQ:
-            # return load_dataset("huggan/CelebA-HQ", split=split_method)
-            return load_dataset("datasets/celeba_hq_256", split='train')
+            return load_from_disk("datasets/celeba_hq_256")
         elif name == DatasetLoader.CELEBA_HQ_LATENT_PR05:
             return load_from_disk("datasets/celeba_hq_256_pr05")
         elif name == DatasetLoader.CELEBA_HQ_LATENT:
