@@ -109,6 +109,7 @@ def parse_args():
     parser.add_argument('--save_model_epochs', '-sme', type=int, help=f"Save model per epochs, default: {DEFAULT_SAVE_MODEL_EPOCHS}")
     parser.add_argument('--is_save_all_model_epochs', '-isame', action='store_true', help=f"")
     parser.add_argument('--sample_ep', '-se', type=int, help=f"Select i-th epoch to sample/measure, if no specify, use the lastest saved model, default: {DEFAULT_SAMPLE_EPOCH}")
+    parser.add_argument('--measure_sample_n', '-msn', type=int, help=f"Number of images to generate for FID/MSE/SSIM measurement, default: 10000")
     parser.add_argument('--result', '-res', type=str, help=f"Output file path, default: {DEFAULT_RESULT}")
     
 
@@ -253,6 +254,10 @@ def setup():
     setattr(config, "device_ids", [int(i) for i in range(len(config.gpu.split(',')))])
     # setattr(config, "device_ids", config.gpu)
     
+    # measure_sample_n override
+    if hasattr(args, 'measure_sample_n') and args.measure_sample_n is not None:
+        config.measure_sample_n = args.measure_sample_n
+
     # sample_ep options
     if isinstance(config.sample_ep, int):
         if config.sample_ep < 0:
