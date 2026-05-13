@@ -70,7 +70,7 @@ class DatasetLoader(object):
     R_trigger_only = "R_trigger_only"
     IMAGE = "image"
     LABEL = "label"
-    def __init__(self, name: str, label: int=None, root: str=None, channel: int=None, image_size: int=None, vmin: Union[int, float]=DEFAULT_VMIN, vmax: Union[int, float]=DEFAULT_VMAX, batch_size: int=512, shuffle: bool=True, seed: int=0):
+    def __init__(self, name: str, label: int=None, root: str=None, channel: int=None, image_size: int=None, vmin: Union[int, float]=DEFAULT_VMIN, vmax: Union[int, float]=DEFAULT_VMAX, batch_size: int=512, shuffle: bool=True, seed: int=0, subset_rate: float=1.0):
         self.__root = root
         self.__name = name
         if label != None and not isinstance(label, list)and not isinstance(label, tuple):
@@ -83,6 +83,10 @@ class DatasetLoader(object):
         self.__batch_size = batch_size
         self.__shuffle = shuffle
         self.__dataset = self.__load_dataset(name=name)
+        if subset_rate < 1.0:
+            n = max(1, int(len(self.__dataset) * subset_rate))
+            self.__dataset = self.__dataset.select(range(n))
+            print(f"Dataset subset: using {n} / {len(self.__dataset) + (len(self.__dataset) - n)} samples ({subset_rate*100:.0f}%)")
         self.__set_img_shape(image_size=image_size)
         self.__trigger_type = self.__target_type = None
         self.__trigger = self.__target = self.__poison_rate = self.__ext_poison_rate = None

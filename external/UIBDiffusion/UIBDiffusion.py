@@ -110,6 +110,7 @@ def parse_args():
     parser.add_argument('--is_save_all_model_epochs', '-isame', action='store_true', help=f"")
     parser.add_argument('--sample_ep', '-se', type=int, help=f"Select i-th epoch to sample/measure, if no specify, use the lastest saved model, default: {DEFAULT_SAMPLE_EPOCH}")
     parser.add_argument('--measure_sample_n', '-msn', type=int, help=f"Number of images to generate for FID/MSE/SSIM measurement, default: 10000")
+    parser.add_argument('--subset_rate', '-sr', type=float, help=f"Fraction of dataset to use for training, e.g. 0.1 for 10%, default: 1.0")
     parser.add_argument('--result', '-res', type=str, help=f"Output file path, default: {DEFAULT_RESULT}")
     
 
@@ -134,6 +135,7 @@ class TrainingConfig:
     inpaint_mul: float = DEFAULT_INPAINT_MUL
     eval_max_batch: int = DEFAULT_EVAL_MAX_BATCH
     learning_rate: float = DEFAULT_LEARNING_RATE
+    subset_rate: float = 1.0
     clean_rate: float = DEFAULT_CLEAN_RATE
     poison_rate: float = DEFAULT_POISON_RATE
     ext_poison_rate: float = DEFAULT_EXTEND_POISON_RATE
@@ -459,7 +461,7 @@ def get_data_loader(config: TrainingConfig):
     
     total_poison_rate = sum(config.poison_rate) if isinstance(config.poison_rate, list) else config.poison_rate
     if hasattr(config, 'R_trigger_only'):
-        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=total_poison_rate, poison_rate_list=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode, R_trigger_only=config.R_trigger_only)
+        dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax, subset_rate=config.subset_rate).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=total_poison_rate, poison_rate_list=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode, R_trigger_only=config.R_trigger_only)
     else:
         dsl = DatasetLoader(root=ds_root, name=config.dataset, batch_size=config.batch, vmin=vmin, vmax=vmax).set_multi_poison(trigger_types=config.trigger, target_types=config.target, clean_rate=config.clean_rate, poison_rate=total_poison_rate, poison_rate_list=config.poison_rate, ext_poison_rate=config.ext_poison_rate).prepare_dataset(mode=config.dataset_load_mode)
     print(f"datasetloader len: {len(dsl)}")
