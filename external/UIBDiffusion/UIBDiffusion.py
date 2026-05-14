@@ -1403,6 +1403,24 @@ else:
 
 accelerator.end_training()
 
+# Auto-save results to Google Drive if mounted
+import shutil as _shutil
+import os as _os
+
+_drive_path = "/content/drive/MyDrive/UIB_Results"
+if _os.path.exists("/content/drive/MyDrive") and _os.path.exists(config.output_dir):
+    try:
+        _dst = _os.path.join(_drive_path, _os.path.basename(config.output_dir))
+        _os.makedirs(_drive_path, exist_ok=True)
+        if _os.path.exists(_dst):
+            _shutil.rmtree(_dst)
+        _shutil.copytree(config.output_dir, _dst)
+        print(f"Auto-saved to Google Drive: {_dst}")
+    except Exception as _e:
+        print(f"Auto-save failed: {_e}")
+else:
+    print("Google Drive not mounted — skipping auto-save")
+
 
 # Metric.mse_batch()
 # Computes Mean Squared Error — how different are two sets of images pixel by pixel?
