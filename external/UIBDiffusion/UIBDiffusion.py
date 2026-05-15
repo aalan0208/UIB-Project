@@ -1266,10 +1266,18 @@ def get_ep_model_path(config: TrainingConfig, dir: Union[str, os.PathLike], epoc
 def checkpoint(config: TrainingConfig, accelerator: Accelerator, pipeline, cur_epoch: int, cur_step: int, repo=None, commit_msg: str=None):
     accelerator.save_state(config.ckpt_path)
     accelerator.save({'epoch': cur_epoch, 'step': cur_step}, config.data_ckpt_path)
-    # if config.push_to_hub:
-    #     push_to_hub(config, pipeline, repo, commit_message=commit_msg, blocking=True)
-    # else:
     pipeline.save_pretrained(config.output_dir)
+    # Auto-backup to Google Drive if mounted
+    import shutil as _shutil, os as _os
+    _drive_dst = f"/content/drive/MyDrive/UIB_Results/{_os.path.basename(config.output_dir)}"
+    if _os.path.exists("/content/drive/MyDrive"):
+        try:
+            if _os.path.exists(_drive_dst):
+                _shutil.rmtree(_drive_dst)
+            _shutil.copytree(config.output_dir, _drive_dst)
+            print(f"Checkpoint backed up to Drive (epoch {cur_epoch})")
+        except Exception as _e:
+            print(f"Drive backup failed: {_e}")
         
     if config.is_save_all_model_epochs:
         # ep_model_path = os.path.join(config.output_dir, config.ep_model_dir, f"ep{cur_epoch}")
