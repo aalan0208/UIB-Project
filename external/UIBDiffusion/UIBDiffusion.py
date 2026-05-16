@@ -68,7 +68,7 @@ NOT_MODE_TRAIN_OPTS = ['sample_ep']
 NOT_MODE_TRAIN_MEASURE_OPTS = ['sample_ep']
 MODE_RESUME_OPTS = ['project', 'task', 'sched', 'ddim_eta', 'infer_steps', 'mode', 'gpu', 'ckpt']
 MODE_SAMPLING_OPTS = ['project', 'task', 'sched', 'ddim_eta', 'infer_steps', 'mode', 'eval_max_batch', 'gpu', 'fclip', 'ckpt', 'sample_ep', 'infer_start', 'inpaint_mul']
-MODE_MEASURE_OPTS = ['project', 'task', 'sched', 'ddim_eta', 'infer_steps', 'mode', 'eval_max_batch', 'gpu', 'fclip', 'ckpt', 'sample_ep', 'infer_start', 'inpaint_mul']
+MODE_MEASURE_OPTS = ['project', 'task', 'sched', 'ddim_eta', 'infer_steps', 'mode', 'eval_max_batch', 'gpu', 'fclip', 'ckpt', 'sample_ep', 'infer_start', 'inpaint_mul', 'measure_sample_n']
 # IGNORE_ARGS = ['overwrite']
 IGNORE_ARGS = ['overwrite', 'is_save_all_model_epochs', 'R_trigger_only']
 
